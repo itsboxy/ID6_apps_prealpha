@@ -48,6 +48,17 @@ static inline int gateway_should_yield(int lock, uint64_t now, uint64_t until) {
            recv(lock, &waiting, sizeof waiting, 0) > 0;
 }
 
+/* For a worker that polls continuously: hold the connection for the minimum
+ * lease, then yield only when another client has asked for the gateway.
+ * With no waiter, an expired lease is renewed instead of reconnecting. */
+static inline int gateway_yield_or_renew(int lock, uint64_t now, uint64_t *until) {
+    char waiting;
+    if (now < *until && *until - now > DIAGNOSTIC_LEASE_MS - DIAGNOSTIC_MIN_LEASE_MS) return 0;
+    if (recv(lock, &waiting, sizeof waiting, 0) > 0) return 1;
+    if (now >= *until) *until = now + DIAGNOSTIC_LEASE_MS;
+    return 0;
+}
+
 static inline void release_gateway(int *connection, int *lock) {
     if (*connection >= 0) close(*connection);
     if (*lock >= 0) close(*lock);

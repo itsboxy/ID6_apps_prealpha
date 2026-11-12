@@ -70,19 +70,22 @@ def shift_app():
         ET.SubElement(props,"property",id="2",value="false")
         ET.SubElement(props,"property",id="3",value="true")
 
-    graphic(54,art.BAR_BASE,52,287,art.BAR_WIDTH,90)
-    graphic(55,art.LIGHT_BASE,52,10,1104,76)
-    graphic(56,art.TARGET_BASE+art.DEFAULT_INDEX,1003,113,153,135)
-    graphic(57,art.SHIFT_OFF,454,215,350,42)
+    # Every box matches its bitmap size in shift_art.py exactly.
+    dw, dh = art.DIGIT_SIZE
+    rpm_x = 604 - 2*dw  # four RPM digits centred on the bar (x 52..1156)
+    graphic(54,art.BAR_BASE,52,287,art.BAR_WIDTH,art.BAR_HEIGHT)
+    graphic(55,art.LIGHT_BASE,52,10,*art.LIGHTS_SIZE)
+    graphic(56,art.TARGET_BASE+art.DEFAULT_INDEX,1003,113,*art.TARGET_SIZE)
+    graphic(57,art.SHIFT_OFF,604-art.SHIFT_SIZE[0]//2,232,*art.SHIFT_SIZE)
     for i in range(4):
-        graphic(60+i,art.DIGIT_BASE+(10 if i in (1,2) else 11),501+i*64,108,64,100)
-    graphic(64,art.SPEED_LEGEND,53,108,200,179)
-    graphic(65,art.RPM_LEGEND,764,169,68,35)
-    graphic(66,art.SCALE,52,377,art.BAR_WIDTH,42)
-    graphic(67,art.LOWER,52,420,1104,10)
-    graphic(68,art.MARK_BASE+art.DEFAULT_INDEX,52,278,art.BAR_WIDTH,9)
+        graphic(60+i,art.DIGIT_BASE+(10 if i in (1,2) else 11),rpm_x+i*dw,100,dw,dh)
+    graphic(64,art.SPEED_LEGEND,53,96,*art.SPEED_LEGEND_SIZE)
+    graphic(65,art.RPM_LEGEND,rpm_x+4*dw+10,182,*art.RPM_LEGEND_SIZE)
+    graphic(66,art.SCALE,52,377,*art.SCALE_SIZE)
+    graphic(67,art.LOWER,52,422,*art.LOWER_SIZE)
+    graphic(68,art.MARK_BASE+art.DEFAULT_INDEX,52,278,*art.MARK_SIZE)
     for i in range(3):
-        graphic(70+i,art.DIGIT_BASE+(10 if i==2 else 11),53+i*67,139,67,109)
+        graphic(70+i,art.DIGIT_BASE+(10 if i==2 else 11),53+i*dw,122,dw,dh)
 
     settings=ET.SubElement(states,"hmiState",id="101",parentId="100",text="Shift light setting")
     items=ET.SubElement(settings,"components")
@@ -118,21 +121,42 @@ def map_app():
     position(ET.SubElement(content,"label",id="150",model="50"),174,337,850,53)
     save(doc,f"{name}.xml")
 
-    arial=Path("/System/Library/Fonts/Supplemental/Arial.ttf")
-    font=ImageFont.truetype(str(arial) if arial.is_file() else "DejaVuSans.ttf",39)
-    logo=Image.new("RGBA",(360,48))
-    ImageDraw.Draw(logo).text((180,24),"MHD Maps",font=font,anchor="mm",fill="#f0f4fb")
-    tiles=Image.new("RGBA",(852,192))
-    draw=ImageDraw.Draw(tiles)
-    for slot,x in enumerate(range(0,4*220,220),1):
-        draw.rounded_rectangle((x,0,x+191,191),radius=9,fill="#192331",outline="#475c74",width=2)
-        draw.text((x+96,96),f"Map {slot}",font=font,anchor="mm",fill="#f0f4fb")
     with ZipFile(ROOT/f"{name}_ALL_Images.zip","w",ZIP_DEFLATED) as archive:
-        transparent_icon=Image.new("RGBA",(1,1))
-        for identifier,image in ((56000,logo),(56001,tiles),(56002,transparent_icon)):
+        for identifier,image in map_bitmaps():
             data=BytesIO()
             image.save(data,format="PNG",optimize=True)
             archive.writestr(ZipInfo(f"{identifier}.png"),data.getvalue(),ZIP_DEFLATED)
+
+
+MAP_ACCENTS = ("#5cc8ff", "#2fe08a", "#ffb340", "#ff3b47")
+
+
+def map_bitmaps():
+    """MHD Maps title (360x48), four 192px tiles on a 852x192 strip, and a
+    transparent button icon. Tile x positions must match the button boxes."""
+    logo, d = art.art((360, 48))
+    art.label(d, 180, 8, "MHD MAPS", 30, color=art.INK, align="center", tracking=6)
+    art.hairline(logo, 44, art.FAINT, 40, 320, width=1, fade=80)
+
+    tiles, _ = art.art((852, 192))
+    for slot, x in enumerate(range(0, 4*220, 220), 1):
+        card, cd = art.art((192, 192))
+        mask = Image.new("L", (192, 192))
+        ImageDraw.Draw(mask).rounded_rectangle((0, 0, 191, 191), radius=16, fill=255)
+        shade = Image.new("RGBA", (192, 192))
+        sd = ImageDraw.Draw(shade)
+        for y in range(192):
+            sd.line((0, y, 191, y), fill=art.mix("#1d2938", "#0f161f", y/191))
+        card.paste(shade, mask=mask)
+        cd.rounded_rectangle((0, 0, 191, 191), radius=16, outline="#33455a", width=2)
+        accent = MAP_ACCENTS[slot-1]
+        strip, sd = art.art((192, 192))
+        sd.rounded_rectangle((22, 18, 70, 23), radius=3, fill=accent)
+        card.alpha_composite(art.glow(strip, 4, 0.8))
+        art.label(cd, 22, 36, "MAP", 22, color=art.MUTED, tracking=4)
+        cd.text((170, 176), str(slot), font=art.font(118), fill=art.INK, anchor="rs")
+        tiles.alpha_composite(card, (x, 0))
+    return ((56000, logo), (56001, tiles), (56002, Image.new("RGBA", (1, 1))))
 
 
 if __name__=="__main__":

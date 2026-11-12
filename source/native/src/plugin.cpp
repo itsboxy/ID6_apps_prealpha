@@ -228,7 +228,7 @@ void BoostDeck::refresh() {
             const char *format = i==BD_BOOST ? "%s%s   %+.1f%s%s"
                                 : i==BD_RAIL ? "%s%s   %.0f%s%s"
                                 : "%s%s   %.1f%s%s";
-            double reading = bd_display_value(i,x,0);
+            double reading = bd_display_value(i,x,kMetricUnits && i!=BD_BOOST);
             if (i==BD_BOOST && fabs(reading)<0.05) reading=0;
             snprintf(label,sizeof label,format,prefix,scale.name,reading,unit_space,scale.unit);
             double fraction=(x-scale.minimum)/(scale.maximum-scale.minimum);

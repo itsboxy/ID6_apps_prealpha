@@ -208,6 +208,14 @@ int main(int argc, char **argv) {
 #elif defined(SHIFT_DECK_ONLY)
 #include "drive_frame.h"
 
+/* RPM is read every cycle; speed is read every SPEED_EVERY cycles and the
+ * last value is reused in between. See SHIFT_FAST_RPM in drive_frame.h. */
+#if SHIFT_FAST_RPM
+enum { SHIFT_CYCLE_MS = 30, SHIFT_MIN_IDLE_MS = 5, SPEED_EVERY = 4 };
+#else
+enum { SHIFT_CYCLE_MS = 70, SHIFT_MIN_IDLE_MS = 10, SPEED_EVERY = 1 };
+#endif
+
 static int read_live_pid(int fd, unsigned char pid, int width, int *value) {
     unsigned char req[]={0x01,pid}, prefix[]={0x41,pid}, reply[4];
     unsigned negative;
@@ -222,7 +230,8 @@ int main(int argc, char **argv) {
     unsigned port=6801, udp_port=DRIVE_PORT, cycles=0, count=0;
     pid_t parent=getppid();
     struct sockaddr_in dest;
-    int fd=-1, sock, lock=-1, i;
+    int fd=-1, sock, lock=-1, i, kph=-1;
+    unsigned speed_due=0;
     uint64_t lease_until=0, retry_at=0;
     for (i=1;i<argc;++i) {
         if (!strcmp(argv[i],"--host") && i+1<argc && !host) host=argv[++i];
@@ -241,7 +250,7 @@ int main(int argc, char **argv) {
     inet_pton(AF_INET,"127.0.0.1",&dest.sin_addr);
     while (running && getppid()==parent && (!cycles || count<cycles)) {
         struct drive_frame f;
-        int rpm=-1,kph=-1;
+        int rpm=-1;
         uint64_t start=bd_mono_ms(), elapsed;
         if (fd<0 && start>=retry_at) {
             lock=reserve_gateway();
@@ -250,27 +259,39 @@ int main(int argc, char **argv) {
                 if (fd<0) {
                     release_gateway(&fd,&lock);
                     retry_at=bd_mono_ms()+DIAGNOSTIC_RETRY_MS;
-                } else lease_until=bd_mono_ms()+DIAGNOSTIC_LEASE_MS;
+                } else {
+                    lease_until=bd_mono_ms()+DIAGNOSTIC_LEASE_MS;
+                    speed_due=0;
+                }
             }
         }
         if (fd>=0) {
-            if (!read_live_pid(fd,0x0c,2,&rpm) || !read_live_pid(fd,0x0d,1,&kph)) {
+            int ok=read_live_pid(fd,0x0c,2,&rpm);
+            if (ok && speed_due==0) ok=read_live_pid(fd,0x0d,1,&kph);
+            if (!ok) {
                 release_gateway(&fd,&lock);
+                kph=-1;
                 retry_at=bd_mono_ms()+DIAGNOSTIC_RETRY_MS;
             } else {
+                speed_due=(speed_due+1)%SPEED_EVERY;
                 f.sampled_ms=bd_mono_ms();
                 f.rpm=rpm;
                 f.kph=kph;
                 if (sendto(sock,&f,sizeof f,0,(struct sockaddr *)&dest,sizeof dest)!=(ssize_t)sizeof f) break;
+#if SHIFT_FAST_RPM
+                if (gateway_yield_or_renew(lock,f.sampled_ms,&lease_until)) {
+#else
                 if (gateway_should_yield(lock,f.sampled_ms,lease_until)) {
+#endif
                     release_gateway(&fd,&lock);
+                    kph=-1;
                     retry_at=f.sampled_ms+DIAGNOSTIC_YIELD_MS;
                 }
             }
         }
         ++count;
         elapsed=bd_mono_ms()-start;
-        if (running) poll(0,0,elapsed<70 ? (int)(70-elapsed) : 10);
+        if (running) poll(0,0,elapsed<SHIFT_CYCLE_MS ? (int)(SHIFT_CYCLE_MS-elapsed) : SHIFT_MIN_IDLE_MS);
     }
     release_gateway(&fd,&lock);
     close(sock);

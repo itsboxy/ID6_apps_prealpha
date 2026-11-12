@@ -15,8 +15,10 @@ build:
 build/boostdeck-collector: src/collector.c $(CORE) $(HEADERS) | build
 	$(CC) $(CFLAGS) -Isrc $(filter %.c,$^) -lm -o $@
 
+SHIFT_FAST_RPM ?= 0
+
 build/shift-deck: src/collector.c $(CORE) $(HEADERS) | build
-	$(CC) $(CFLAGS) -Isrc -DSHIFT_DECK_ONLY $(filter %.c,$^) -lm -o $@
+	$(CC) $(CFLAGS) -Isrc -DSHIFT_DECK_ONLY -DSHIFT_FAST_RPM=$(SHIFT_FAST_RPM) $(filter %.c,$^) -lm -o $@
 
 build/mhd-maps: src/collector.c $(CORE) $(HEADERS) | build
 	$(CC) $(CFLAGS) -Isrc -DMHD_MAPS_ONLY $(filter %.c,$^) -lm -o $@

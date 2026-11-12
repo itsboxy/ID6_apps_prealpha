@@ -45,7 +45,7 @@ class ShiftDeck : public bmw::PluginApp {
         bmw::Parcel data;
         data.writeUInt32(kShiftPoll);
         data.writeUInt32(generation_);
-        post(bmw::Message(0x40000003u,data),visible_ ? 40u : 150u);
+        post(bmw::Message(0x40000003u,data),visible_ ? (SHIFT_FAST_RPM ? 25u : 40u) : 150u);
     }
     void digits(unsigned model, unsigned width, const char* text, unsigned base, bool center) {
         unsigned length=static_cast<unsigned>(strlen(text));
@@ -85,7 +85,7 @@ class ShiftDeck : public bmw::PluginApp {
         }
         if (kph!=kph_) {
             if (kph<0) strcpy(text,"--");
-            else snprintf(text,sizeof text,"%d",(kph*621371+500000)/1000000);
+            else snprintf(text,sizeof text,"%d",kMetricSpeed ? kph : (kph*621371+500000)/1000000);
             digits(70u,3u,text,kDigitBase,false);
             kph_=kph;
         }

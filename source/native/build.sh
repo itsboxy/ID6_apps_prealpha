@@ -18,6 +18,9 @@ for pair in libm.so:libm.so.2 libsocket.so:libsocket.so.3 libstdc++.so:libstdc++
 done
 ntoarm-gcc -dumpversion
 ntoarm-gcc -dumpmachine
+# SHIFT_FAST_RPM=1 sh native/build.sh enables the faster ShiftDeck RPM timing (drive_frame.h).
+fast="-DSHIFT_FAST_RPM=${SHIFT_FAST_RPM:-0}"
+echo "ShiftDeck RPM timing: $fast"
 c() { qcc -V4.4.2,gcc_ntoarmv7le -Wc,-std=c99 -Wall -Wextra -Werror "$@"; }
 cxx() { qcc -V4.4.2,gcc_ntoarmv7le_gpp -lang-c++ -Wc,-std=gnu++98 -Wall -Wextra -Werror "$@"; }
 c -Isrc -O2 -fPIC -c src/gauge_core.c -o out/core.o
@@ -28,9 +31,9 @@ c -Isrc -O2 src/collector.c src/gauge_core.c -Lout -lm -lsocket -o out/boostdeck
 cxx -Isrc -Isdk -O2 -fno-exceptions -fPIC -shared src/mhd_maps.cpp \
     "$frameworks/libAppFramework.A.so" "$frameworks/libCoreFramework.A.so" -Lout \
     -Wl,--allow-shlib-undefined -Wl,-soname,libMhdMaps.so -o out/libMhdMaps.so
-cxx -Isrc -Isdk -O2 -fno-exceptions -fPIC -shared src/shift_deck.cpp out/core.o \
+cxx -Isrc -Isdk -O2 "$fast" -fno-exceptions -fPIC -shared src/shift_deck.cpp out/core.o \
     "$frameworks/libAppFramework.A.so" "$frameworks/libCoreFramework.A.so" -Lout -lm -lsocket \
     -Wl,--allow-shlib-undefined -Wl,-soname,libShiftDeck.so -o out/libShiftDeck.so
 c -Isrc -O2 -DMHD_MAPS_ONLY src/collector.c src/gauge_core.c -Lout -lm -lsocket -o out/mhd-maps-qnx
-c -Isrc -O2 -DSHIFT_DECK_ONLY src/collector.c src/gauge_core.c -Lout -lm -lsocket -o out/shift-deck-qnx
+c -Isrc -O2 "$fast" -DSHIFT_DECK_ONLY src/collector.c src/gauge_core.c -Lout -lm -lsocket -o out/shift-deck-qnx
 c -O2 -static fileops.c -o out/gaugedeck-fileops

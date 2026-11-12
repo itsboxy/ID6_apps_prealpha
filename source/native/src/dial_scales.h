@@ -2,14 +2,15 @@
 static const unsigned kDialSteps = 32;
 static const unsigned kBarFirst = 55000;
 static const unsigned kMulticolor = 8;
+static const int kMetricUnits = 1; /* boost always stays in psi */
 static const char *const kColorNames[] = {"BMW Orange", "Blue", "Green", "White", "Purple", "Pink", "Cyan", "Red", "Multicolor"};
 static const struct DialScale { double minimum, maximum; const char *name, *unit; } kDialScales[] = {
     {0, 35, "Boost", "psi"},
     {9, 19, "AFR", ""},
     {-20, 50, "Timing", "deg"},
-    {-20, 100, "Intake air", "\260F"},
-    {0, 150, "Transmission", "\260F"},
-    {0, 250, "Rail pressure", "psi"},
-    {0, 8, "Oil pressure", "psi"},
-    {0, 130, "Coolant", "\260F"}
+    {-20, 100, "Intake air", "\260C"},
+    {0, 150, "Transmission", "\260C"},
+    {0, 250, "Rail pressure", "bar"},
+    {0, 8, "Oil pressure", "bar"},
+    {0, 130, "Coolant", "\260C"}
 };

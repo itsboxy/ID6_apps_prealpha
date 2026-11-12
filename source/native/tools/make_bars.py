@@ -6,11 +6,18 @@ from zipfile import ZIP_DEFLATED, ZipFile, ZipInfo
 
 from PIL import Image, ImageDraw
 
+import shift_art as art
+
 ROOT = Path(__file__).resolve().parents[1]
+# Metric readings (C, bar) for everything except boost, which always stays in psi.
+# Bar ranges are in the collector's raw units (psi, AFR, deg, C, C, bar, bar, C)
+# and do not depend on this switch.
+METRIC = True
+_TEMP, _PRESSURE = (r'\260C', 'bar') if METRIC else (r'\260F', 'psi')
 BARS = (
     ('Boost', 'psi', 0, 35), ('AFR', '', 9, 19), ('Timing', 'deg', -20, 50),
-    ('Intake air', r'\260F', -20, 100), ('Transmission', r'\260F', 0, 150),
-    ('Rail pressure', 'psi', 0, 250), ('Oil pressure', 'psi', 0, 8), ('Coolant', r'\260F', 0, 130),
+    ('Intake air', _TEMP, -20, 100), ('Transmission', _TEMP, 0, 150),
+    ('Rail pressure', _PRESSURE, 0, 250), ('Oil pressure', _PRESSURE, 0, 8), ('Coolant', _TEMP, 0, 130),
 )
 COLORS = (
     ('BMW Orange', '#ff4f1a'), ('Blue', '#58ceff'), ('Green', '#6cdb93'), ('White', '#e2eaf0'),
@@ -32,22 +39,51 @@ def label(parent, identifier, model):
 def button(parent, identifier, action, text):
     ET.SubElement(parent,'button',id=str(identifier),action=str(action),text=text)
 
+BAR_SIZE = (512, 17)  # same as the XML image box, so iDrive never rescales it
+TRACK_TOP, TRACK_BOTTOM = 4, 13
+
+
+def bar(fill, step):
+    """One gauge bar: a dark notched track, filled to step/STEPS with the theme colour."""
+    width, height = BAR_SIZE
+    image = Image.new('RGBA', BAR_SIZE)
+    draw = ImageDraw.Draw(image)
+    draw.rounded_rectangle((0, TRACK_TOP, width-1, TRACK_BOTTOM), radius=5, fill='#18212c')
+    for quarter in (1, 2, 3):
+        x = round(width*quarter/4)
+        draw.line((x, TRACK_TOP, x, TRACK_BOTTOM), fill='#0b1017', width=2)
+    if step:
+        end = max(12, round(width*step/STEPS))
+        mask = Image.new('L', BAR_SIZE)
+        ImageDraw.Draw(mask).rounded_rectangle((0, TRACK_TOP, end-1, TRACK_BOTTOM), radius=5, fill=255)
+        colour = Image.new('RGBA', BAR_SIZE)
+        cd = ImageDraw.Draw(colour)
+        for x in range(end):
+            # Darker at the start, full brightness at the leading edge.
+            cd.line((x, 0, x, height), fill=art.mix('#0b1017', fill, 0.45 + 0.55*x/max(1, end-1)))
+        cd.line((0, TRACK_TOP+1, end, TRACK_TOP+1), fill=art.mix(fill, '#ffffff', 0.45)+(140,))
+        cd.rounded_rectangle((end-5, TRACK_TOP, end-1, TRACK_BOTTOM), radius=2,
+                             fill=art.mix(fill, '#ffffff', 0.55))
+        lit = Image.new('RGBA', BAR_SIZE)
+        lit.paste(colour, mask=mask)
+        image.alpha_composite(art.glow(lit, 3, 0.7))
+    return image
+
+
+def bar_bitmaps():
+    for color, fill in enumerate(tuple(fill for _, fill in COLORS) + MULTICOLOR):
+        for step in range(STEPS+1):
+            if color and not step:
+                continue
+            yield FIRST+color*STEPS+step, bar(fill, step)
+
+
 def build_assets():
     with ZipFile(ROOT/'plugin/BoostDeck_ALL_Images.zip','w', compression=ZIP_DEFLATED) as archive:
-        for color, fill in enumerate(tuple(fill for _, fill in COLORS) + MULTICOLOR):
-            for step in range(STEPS+1):
-                if color and not step:
-                    continue
-                image = Image.new('RGBA',(240,12))
-                draw = ImageDraw.Draw(image)
-                draw.rounded_rectangle((0,0,239,11),radius=4,fill='#263342')
-                if step:
-                    width = max(6, round(240*step/STEPS))
-                    draw.rounded_rectangle((0,0,width-1,11),radius=4,fill=fill)
-                data = BytesIO()
-                image.save(data,format='PNG',optimize=True)
-                identifier = FIRST+color*STEPS+step
-                archive.writestr(ZipInfo(f'{identifier}.png'),data.getvalue(),ZIP_DEFLATED)
+        for identifier, image in bar_bitmaps():
+            data = BytesIO()
+            image.save(data,format='PNG',optimize=True)
+            archive.writestr(ZipInfo(f'{identifier}.png'),data.getvalue(),ZIP_DEFLATED)
 
 def main():
     root = ET.Element('pluginApps')
@@ -88,6 +124,7 @@ def main():
         f'static const unsigned kDialSteps = {STEPS};\n'
         f'static const unsigned kBarFirst = {FIRST};\n'
         f'static const unsigned kMulticolor = {len(COLORS)};\n'
+        f'static const int kMetricUnits = {int(METRIC)}; /* boost always stays in psi */\n'
         f'static const char *const kColorNames[] = {{{colors}}};\n'
         'static const struct DialScale { double minimum, maximum; const char *name, *unit; } kDialScales[] = {\n'
         + ',\n'.join(scales) + '\n};\n')
